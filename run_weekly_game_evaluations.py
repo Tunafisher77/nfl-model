@@ -1,11 +1,20 @@
-from nfl_common import email_header, format_game_time, load_schedules, rows_to_sheet, select_next_slate, upsert_records_sheet
+import pandas as pd
+
+from nfl_common import email_header, format_game_time, load_play_by_play, load_schedules, rows_to_sheet, select_next_slate, upsert_records_sheet
 from nfl_models import evaluate_games
 
 
 def main():
     schedules = load_schedules()
     slate = select_next_slate(schedules)
-    picks = evaluate_games(schedules, slate)
+    pbp_frames = []
+    for season in (slate.season - 1, slate.season):
+        try:
+            pbp_frames.append(load_play_by_play(season))
+        except Exception:
+            pass
+    pbp = pd.concat(pbp_frames, ignore_index=True) if pbp_frames else pd.DataFrame()
+    picks = evaluate_games(schedules, slate, pbp)
     rows = email_header("Weekly NFL Game Evaluations", slate)
     rows += [["All Games", ""]]
     for _, pick in picks.iterrows():
@@ -13,7 +22,8 @@ def main():
         rows += [
             [f"{pick.away_team} at {pick.home_team}", format_game_time(game)],
             ["Projected Winner", f"{pick.winner} — {pick.confidence} confidence ({pick.confidence_score})"],
-            ["Projected Score", f"{pick.away_team} {pick.away_projection}, {pick.home_team} {pick.home_projection}"],
+        ["Projected Score", f"{pick.away_team} {pick.away_projection}, {pick.home_team} {pick.home_projection}"],
+            ["Advanced Data", "EPA, success rate, explosive plays and pace included" if pick.advanced_data else "Advanced data unavailable; recent scoring form used"],
             ["", ""],
         ]
     rows_to_sheet("NFL Game Email Summary", rows)
