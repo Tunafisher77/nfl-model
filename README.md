@@ -18,8 +18,9 @@ All non-Sunday games are labeled with their weekday and kickoff time. The same v
 
 ## Required GitHub Actions secrets
 
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `GOOGLE_SHEETS_ID`
+
+Google authentication uses GitHub OIDC and Google Workload Identity Federation; no downloadable service-account key is stored.
 
 ## Google Sheets tabs
 
