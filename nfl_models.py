@@ -110,9 +110,12 @@ def evaluate_yardage(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
             if projection < milestones[0] * .55:
                 continue
             std = float(values.tail(6).std(ddof=0))
-            best = max(milestones, key=lambda m: normal_over_probability(projection, m, std) if m <= projection * 1.35 else -1)
-            probability = normal_over_probability(projection, best, std)
-            score = min(99.0, 45 + probability * 42 + min(12, len(values)))
+            milestone_probabilities = {m: normal_over_probability(projection, m, std) for m in milestones}
+            supported = [m for m in milestones if milestone_probabilities[m] >= 0.60]
+            best = max(supported) if supported else min(milestones)
+            probability = milestone_probabilities[best]
+            milestone_bonus = milestones.index(best) * 2.5
+            score = min(95.0, 42 + probability * 38 + milestone_bonus + min(8, len(values)))
             rows.append({"category": category, "player": player, "team": team,
                          "projection": round(projection, 1), "milestone": best,
                          "milestone_probability": round(probability, 3),
