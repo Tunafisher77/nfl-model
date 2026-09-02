@@ -1,0 +1,32 @@
+name: NFL Results Tracking
+
+on:
+  schedule:
+    # Tuesday after Monday Night Football; second entry is a retry.
+    - cron: "15 13 * * 2"
+    - cron: "15 15 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/457900160143/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: mlb-hr-model@mlb-hr-model-498322.iam.gserviceaccount.com
+      - name: Grade frozen weekly predictions
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python nfl_results_tracker.py
