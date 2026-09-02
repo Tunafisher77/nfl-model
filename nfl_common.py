@@ -167,6 +167,16 @@ def format_game_time(row: pd.Series) -> str:
 
 
 def rows_to_sheet(tab_name: str, rows: list[list[object]]) -> None:
+    book = open_google_book_()
+    try:
+        sheet = book.worksheet(tab_name)
+        sheet.clear()
+    except gspread.WorksheetNotFound:
+        sheet = book.add_worksheet(title=tab_name, rows=max(200, len(rows) + 20), cols=12)
+    sheet.update(rows, value_input_option="RAW")
+
+
+def open_google_book_():
     raw_creds = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_ID", "").strip()
     if not spreadsheet_id:
@@ -177,13 +187,38 @@ def rows_to_sheet(tab_name: str, rows: list[list[object]]) -> None:
     else:
         credentials, _ = google.auth.default(scopes=scopes)
     client = gspread.authorize(credentials)
-    book = client.open_by_key(spreadsheet_id)
+    return client.open_by_key(spreadsheet_id)
+
+
+def upsert_records_sheet(tab_name: str, records: list[dict], key_fields: tuple[str, ...]) -> None:
+    if not records:
+        return
+    book = open_google_book_()
     try:
         sheet = book.worksheet(tab_name)
-        sheet.clear()
+        existing = sheet.get_all_records()
     except gspread.WorksheetNotFound:
-        sheet = book.add_worksheet(title=tab_name, rows=max(200, len(rows) + 20), cols=12)
-    sheet.update(rows, value_input_option="RAW")
+        sheet = book.add_worksheet(title=tab_name, rows=500, cols=max(12, len(records[0])))
+        existing = []
+    incoming_keys = {tuple(str(row.get(k, "")) for k in key_fields) for row in records}
+    retained = [row for row in existing if tuple(str(row.get(k, "")) for k in key_fields) not in incoming_keys]
+    combined = retained + records
+    headers = list(records[0].keys())
+    for row in retained:
+        for key in row:
+            if key not in headers:
+                headers.append(key)
+    values = [headers] + [[row.get(h, "") for h in headers] for row in combined]
+    sheet.clear()
+    sheet.update(values, value_input_option="RAW")
+
+
+def read_records_sheet(tab_name: str) -> list[dict]:
+    book = open_google_book_()
+    try:
+        return book.worksheet(tab_name).get_all_records()
+    except gspread.WorksheetNotFound:
+        return []
 
 
 def email_header(title: str, slate: Slate) -> list[list[object]]:
