@@ -23,6 +23,7 @@ PLAYER_STATS_URL = "https://github.com/nflverse/nflverse-data/releases/download/
 PBP_URL = "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.parquet"
 ROSTER_URL = "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_{season}.csv"
 INJURY_URL = "https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{season}.csv"
+ACTIVE_ROSTER_STATUS = "ACT"
 
 
 @dataclass(frozen=True)
@@ -105,9 +106,15 @@ def load_player_stats(season: int) -> pd.DataFrame:
 def load_weekly_roster(season: int) -> pd.DataFrame:
     roster = pd.read_csv(ROSTER_URL.format(season=season), low_memory=False)
     if roster.empty:
-        return roster
+        raise RuntimeError(f"Current {season} roster feed is empty.")
+    required = {"week", "gsis_id", "team", "full_name", "position", "status"}
+    missing = required - set(roster.columns)
+    if missing:
+        raise RuntimeError(f"Current roster feed is missing required columns: {sorted(missing)}")
     latest_week = int(pd.to_numeric(roster["week"], errors="coerce").max())
     roster = roster[roster["week"] == latest_week].copy()
+    roster["roster_source"] = ROSTER_URL.format(season=season)
+    roster["roster_refreshed_at"] = _now().astimezone(EASTERN).strftime("%Y-%m-%d %H:%M ET")
     return roster.sort_values("week").drop_duplicates("gsis_id", keep="last")
 
 
@@ -122,15 +129,21 @@ def load_injuries(season: int, week: int) -> pd.DataFrame:
 def enrich_with_current_roster(stats: pd.DataFrame, season: int) -> pd.DataFrame:
     try:
         roster = load_weekly_roster(season)
-    except Exception:
+    except Exception as exc:
         stats["roster_verified"] = False
+        stats["roster_status"] = ""
+        stats["roster_week"] = pd.NA
+        stats["roster_source"] = ROSTER_URL.format(season=season)
+        stats["roster_refreshed_at"] = ""
+        stats.attrs["roster_error"] = str(exc)
         return stats
     if roster.empty or "player_id" not in stats:
         stats["roster_verified"] = False
         return stats
-    lookup = roster[["gsis_id", "team", "full_name", "position", "status"]].rename(columns={
+    lookup = roster[["gsis_id", "team", "full_name", "position", "status", "week",
+                     "roster_source", "roster_refreshed_at"]].rename(columns={
         "gsis_id": "player_id", "team": "roster_team", "full_name": "roster_full_name",
-        "position": "roster_position", "status": "roster_status"})
+        "position": "roster_position", "status": "roster_status", "week": "roster_week"})
     enriched = stats.merge(lookup, on="player_id", how="left")
     verified = enriched["roster_team"].notna()
     enriched["roster_verified"] = verified
@@ -138,6 +151,58 @@ def enrich_with_current_roster(stats: pd.DataFrame, season: int) -> pd.DataFrame
     enriched.loc[verified, "player_display_name"] = enriched.loc[verified, "roster_full_name"]
     enriched.loc[verified, "player_name"] = enriched.loc[verified, "roster_full_name"]
     return enriched
+
+
+def validate_current_roster_pool(stats: pd.DataFrame, slate: Slate) -> dict[str, object]:
+    """Fail closed unless current roster data covers every team in the selected slate."""
+    required = {"roster_verified", "roster_status", "roster_week", "roster_source",
+                "roster_refreshed_at", "recent_team", "player_display_name"}
+    missing = required - set(stats.columns)
+    if missing:
+        raise RuntimeError(f"Roster validation failed; missing fields: {sorted(missing)}")
+    verified = stats[stats["roster_verified"].fillna(False)].copy()
+    if verified.empty:
+        detail = stats.attrs.get("roster_error", "No players matched the current roster feed.")
+        raise RuntimeError(f"Roster validation failed: {detail}")
+    active = verified[verified["roster_status"].astype(str).str.upper() == ACTIVE_ROSTER_STATUS].copy()
+    if active.empty:
+        raise RuntimeError("Roster validation failed: no active current-roster players were found.")
+    slate_teams = set(slate.games["home_team"]) | set(slate.games["away_team"])
+    covered_teams = set(active["recent_team"].dropna().astype(str))
+    uncovered = sorted(slate_teams - covered_teams)
+    if uncovered:
+        raise RuntimeError(f"Roster validation failed; no active verified players for: {', '.join(uncovered)}")
+    return {
+        "source": str(active["roster_source"].dropna().iloc[0]),
+        "refreshed_at": str(active["roster_refreshed_at"].dropna().iloc[0]),
+        "roster_week": int(pd.to_numeric(active["roster_week"], errors="coerce").max()),
+        "active_players": int(active["player_id"].nunique()) if "player_id" in active else int(len(active)),
+        "teams_covered": len(slate_teams),
+    }
+
+
+def validate_player_selections(picks: pd.DataFrame, stats: pd.DataFrame) -> None:
+    """Ensure every emitted player/team pair exists on the active current roster."""
+    if picks is None or picks.empty:
+        return
+    active = stats[
+        stats["roster_verified"].fillna(False)
+        & (stats["roster_status"].astype(str).str.upper() == ACTIVE_ROSTER_STATUS)
+    ]
+    valid = set(zip(active["player_display_name"].astype(str), active["recent_team"].astype(str)))
+    invalid = sorted({(str(row.player), str(row.team)) for _, row in picks.iterrows()} - valid)
+    if invalid:
+        labels = ", ".join(f"{player} ({team})" for player, team in invalid)
+        raise RuntimeError(f"Roster validation failed for final selections: {labels}")
+
+
+def roster_email_rows(roster_info: dict[str, object]) -> list[list[object]]:
+    return [
+        ["Roster Validation", f"PASS — {roster_info['active_players']} active players; "
+         f"{roster_info['teams_covered']} slate teams covered; roster week {roster_info['roster_week']}"],
+        ["Roster Source", roster_info["source"]],
+        ["Roster Refreshed", roster_info["refreshed_at"]],
+    ]
 
 
 def _player_stats_from_pbp(season: int) -> pd.DataFrame:
