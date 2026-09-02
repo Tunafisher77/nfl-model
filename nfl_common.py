@@ -11,6 +11,7 @@ from typing import Iterable
 from zoneinfo import ZoneInfo
 
 import gspread
+import google.auth
 import numpy as np
 import pandas as pd
 from google.oauth2.service_account import Credentials
@@ -168,11 +169,14 @@ def format_game_time(row: pd.Series) -> str:
 def rows_to_sheet(tab_name: str, rows: list[list[object]]) -> None:
     raw_creds = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
     spreadsheet_id = os.getenv("GOOGLE_SHEETS_ID", "").strip()
-    if not raw_creds or not spreadsheet_id:
-        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_SHEETS_ID are required.")
-    info = json.loads(raw_creds)
+    if not spreadsheet_id:
+        raise RuntimeError("GOOGLE_SHEETS_ID is required.")
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    client = gspread.authorize(Credentials.from_service_account_info(info, scopes=scopes))
+    if raw_creds:
+        credentials = Credentials.from_service_account_info(json.loads(raw_creds), scopes=scopes)
+    else:
+        credentials, _ = google.auth.default(scopes=scopes)
+    client = gspread.authorize(credentials)
     book = client.open_by_key(spreadsheet_id)
     try:
         sheet = book.worksheet(tab_name)
