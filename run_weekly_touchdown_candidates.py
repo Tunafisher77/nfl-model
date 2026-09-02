@@ -13,7 +13,8 @@ def main():
         rows += [["Status", "Insufficient current-season usage data; no forced selections."]]
     else:
         for rank, (_, pick) in enumerate(picks.iterrows(), 1):
-            rows.append([f"{rank}. {pick.player} — {pick.team}",
+            rows.append([f"{rank}. {pick.player} — {pick.team} {pick.matchup}",
+                         f"{pick.game_label}; " +
                          f"{pick.confidence} ({pick.touchdown_score}); carries {pick.weighted_carries}, targets {pick.weighted_targets}"])
     rows_to_sheet("NFL TD Email Summary", rows)
 
