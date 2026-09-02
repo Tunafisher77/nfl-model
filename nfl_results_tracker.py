@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import pandas as pd
 
-from nfl_common import load_player_stats, load_schedules, read_records_sheet, upsert_records_sheet
+from nfl_common import load_player_stats, load_schedules, read_records_sheet, rows_to_sheet, upsert_records_sheet
 
 
 def _number(value, default=0.0):
@@ -75,6 +75,32 @@ def grade_props(actual: pd.DataFrame, archive: list[dict]) -> list[dict]:
     return results
 
 
+def calibration_summary(games: list[dict], touchdowns: list[dict], props: list[dict]) -> list[list[object]]:
+    rows = [["NFL Calibration Summary", "Value", "Sample"]]
+    game_df, td_df, prop_df = pd.DataFrame(games), pd.DataFrame(touchdowns), pd.DataFrame(props)
+    if not game_df.empty:
+        rows.append(["Game Winner Accuracy", f"{game_df.winner_correct.mean():.1%}", len(game_df)])
+        rows.append(["Game Score MAE", f"{game_df.score_mae.mean():.2f}", len(game_df)])
+        rows.append(["Game Margin MAE", f"{game_df.margin_error.mean():.2f}", len(game_df)])
+        for tier, group in game_df.groupby("confidence"):
+            rows.append([f"Game Accuracy - {tier}", f"{group.winner_correct.mean():.1%}", len(group)])
+    if not td_df.empty:
+        rows.append(["Touchdown Hit Rate - All", f"{td_df.touchdown_hit.mean():.1%}", len(td_df)])
+        for cutoff in (5, 10):
+            subset = td_df[pd.to_numeric(td_df["rank"], errors="coerce") <= cutoff]
+            if not subset.empty:
+                rows.append([f"Touchdown Hit Rate - Top {cutoff}", f"{subset.touchdown_hit.mean():.1%}", len(subset)])
+    if not prop_df.empty:
+        rows.append(["Yardage Projection MAE", f"{prop_df.absolute_error.mean():.2f}", len(prop_df)])
+        rows.append(["Yardage Milestone Hit Rate", f"{prop_df.milestone_hit.mean():.1%}", len(prop_df)])
+        for category, group in prop_df.groupby("category"):
+            rows.append([f"{category} MAE", f"{group.absolute_error.mean():.2f}", len(group)])
+            rows.append([f"{category} Milestone Hit Rate", f"{group.milestone_hit.mean():.1%}", len(group)])
+    if len(rows) == 1:
+        rows.append(["Status", "Waiting for completed games", 0])
+    return rows
+
+
 def main():
     schedules = load_schedules()
     game_archive = read_records_sheet("NFL Game Predictions Archive")
@@ -91,6 +117,7 @@ def main():
     upsert_records_sheet("NFL Game Results", games, ("season", "week", "away_team", "home_team"))
     upsert_records_sheet("NFL TD Results", touchdowns, ("season", "week", "player", "team"))
     upsert_records_sheet("NFL Props Results", props, ("season", "week", "category", "player", "team"))
+    rows_to_sheet("NFL Calibration Summary", calibration_summary(games, touchdowns, props))
 
 
 if __name__ == "__main__":
