@@ -1,4 +1,4 @@
-from nfl_common import email_header, load_player_stats, load_schedules, rows_to_sheet, select_next_slate
+from nfl_common import email_header, load_player_stats, load_schedules, rows_to_sheet, select_next_slate, upsert_records_sheet
 from nfl_models import evaluate_touchdowns
 
 
@@ -17,6 +17,13 @@ def main():
                          f"{pick.game_label}; " +
                          f"{pick.confidence} ({pick.touchdown_score}); carries {pick.weighted_carries}, targets {pick.weighted_targets}"])
     rows_to_sheet("NFL TD Email Summary", rows)
+    archive = []
+    if not picks.empty:
+        for rank, (_, pick) in enumerate(picks.iterrows(), 1):
+            archive.append({"season": slate.season, "week": slate.week, "rank": rank,
+                            "player": pick.player, "team": pick.team, "matchup": pick.matchup,
+                            "touchdown_score": pick.touchdown_score, "confidence": pick.confidence})
+    upsert_records_sheet("NFL TD Predictions Archive", archive, ("season", "week", "player", "team"))
 
 
 if __name__ == "__main__":
