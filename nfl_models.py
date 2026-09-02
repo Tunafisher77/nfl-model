@@ -113,10 +113,12 @@ def _current_players(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
     current = current_season[current_season[team_col].isin(teams)].copy()
     current["model_team"] = current[team_col]
     current["model_player"] = current[name_col]
-    if "roster_verified" in current and current["roster_verified"].any():
-        current = current[current["roster_verified"]].copy()
-    if "roster_status" in current:
-        current = current[~current["roster_status"].isin(["RES", "CUT", "RET", "SUS"])].copy()
+    if "roster_verified" not in current or "roster_status" not in current:
+        return current.iloc[0:0].copy()
+    current = current[
+        current["roster_verified"].fillna(False)
+        & (current["roster_status"].astype(str).str.upper() == "ACT")
+    ].copy()
     return current
 
 
