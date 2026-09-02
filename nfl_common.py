@@ -21,6 +21,8 @@ PACIFIC = ZoneInfo("America/Los_Angeles")
 SCHEDULES_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
 PLAYER_STATS_URL = "https://github.com/nflverse/nflverse-data/releases/download/player_stats/player_stats.csv"
 PBP_URL = "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.parquet"
+ROSTER_URL = "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_{season}.csv"
+INJURY_URL = "https://github.com/nflverse/nflverse-data/releases/download/injuries/injuries_{season}.csv"
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,13 @@ def load_schedules() -> pd.DataFrame:
         kickoff = kickoff.dt.tz_localize(EASTERN, nonexistent="shift_forward", ambiguous="NaT")
     df = df.assign(kickoff_et=kickoff)
     return df
+
+
+def load_play_by_play(season: int) -> pd.DataFrame:
+    columns = ["season", "week", "season_type", "game_id", "posteam", "defteam", "epa", "success",
+               "pass", "rush", "cpoe", "sack", "interception", "fumble_lost", "yards_gained",
+               "yardline_100", "touchdown"]
+    return pd.read_parquet(PBP_URL.format(season=season), columns=columns)
 
 
 def select_next_slate(schedules: pd.DataFrame, now: datetime | None = None) -> Slate:
@@ -89,38 +98,83 @@ def load_player_stats(season: int) -> pd.DataFrame:
         except Exception:
             pass
     combined = pd.concat(frames, ignore_index=True, sort=False)
-    return combined.drop_duplicates(subset=["season", "week", "player_display_name", "recent_team"], keep="last")
+    combined = combined.drop_duplicates(subset=["season", "week", "player_id", "player_display_name", "recent_team"], keep="last")
+    return enrich_with_current_roster(combined, season)
+
+
+def load_weekly_roster(season: int) -> pd.DataFrame:
+    roster = pd.read_csv(ROSTER_URL.format(season=season), low_memory=False)
+    if roster.empty:
+        return roster
+    latest_week = int(pd.to_numeric(roster["week"], errors="coerce").max())
+    roster = roster[roster["week"] == latest_week].copy()
+    return roster.sort_values("week").drop_duplicates("gsis_id", keep="last")
+
+
+def load_injuries(season: int, week: int) -> pd.DataFrame:
+    try:
+        injuries = pd.read_csv(INJURY_URL.format(season=season), low_memory=False)
+    except Exception:
+        return pd.DataFrame()
+    return injuries[(injuries["week"] == week)].copy() if "week" in injuries else pd.DataFrame()
+
+
+def enrich_with_current_roster(stats: pd.DataFrame, season: int) -> pd.DataFrame:
+    try:
+        roster = load_weekly_roster(season)
+    except Exception:
+        stats["roster_verified"] = False
+        return stats
+    if roster.empty or "player_id" not in stats:
+        stats["roster_verified"] = False
+        return stats
+    lookup = roster[["gsis_id", "team", "full_name", "position", "status"]].rename(columns={
+        "gsis_id": "player_id", "team": "roster_team", "full_name": "roster_full_name",
+        "position": "roster_position", "status": "roster_status"})
+    enriched = stats.merge(lookup, on="player_id", how="left")
+    verified = enriched["roster_team"].notna()
+    enriched["roster_verified"] = verified
+    enriched.loc[verified, "recent_team"] = enriched.loc[verified, "roster_team"]
+    enriched.loc[verified, "player_display_name"] = enriched.loc[verified, "roster_full_name"]
+    enriched.loc[verified, "player_name"] = enriched.loc[verified, "roster_full_name"]
+    return enriched
 
 
 def _player_stats_from_pbp(season: int) -> pd.DataFrame:
     columns = [
         "season", "season_type", "week", "posteam", "passer_player_name",
-        "rusher_player_name", "receiver_player_name", "pass_attempt", "rush_attempt",
+        "passer_player_id", "rusher_player_name", "rusher_player_id",
+        "receiver_player_name", "receiver_player_id", "pass_attempt", "rush_attempt",
         "complete_pass", "passing_yards", "rushing_yards", "receiving_yards",
-        "pass_touchdown", "rush_touchdown",
+        "pass_touchdown", "rush_touchdown", "yardline_100",
     ]
     pbp = pd.read_parquet(PBP_URL.format(season=season), columns=columns)
     pbp = pbp[pbp["season_type"].isin(["REG", "POST"])].copy()
+    distance = pd.to_numeric(pbp["yardline_100"], errors="coerce")
+    pbp["inside_10_rush"] = ((pbp["rush_attempt"] == 1) & (distance <= 10)).astype(int)
+    pbp["inside_10_target"] = ((pbp["pass_attempt"] == 1) & pbp["receiver_player_name"].notna() & (distance <= 10)).astype(int)
+    pbp["red_zone_target"] = ((pbp["pass_attempt"] == 1) & pbp["receiver_player_name"].notna() & (distance <= 20)).astype(int)
 
-    def aggregate(role_col: str, metrics: dict[str, tuple[str, str]]) -> pd.DataFrame:
+    def aggregate(role_col: str, id_col: str, metrics: dict[str, tuple[str, str]]) -> pd.DataFrame:
         part = pbp[pbp[role_col].notna()].copy()
         named = {out: pd.NamedAgg(column=source, aggfunc=agg) for out, (source, agg) in metrics.items()}
-        result = part.groupby(["season", "week", "posteam", role_col], as_index=False).agg(**named)
-        return result.rename(columns={"posteam": "recent_team", role_col: "player_display_name"})
+        result = part.groupby(["season", "week", "posteam", id_col, role_col], as_index=False).agg(**named)
+        return result.rename(columns={"posteam": "recent_team", id_col: "player_id", role_col: "player_display_name"})
 
-    passing = aggregate("passer_player_name", {
+    passing = aggregate("passer_player_name", "passer_player_id", {
         "attempts": ("pass_attempt", "sum"), "completions": ("complete_pass", "sum"),
         "passing_yards": ("passing_yards", "sum"), "passing_tds": ("pass_touchdown", "sum"),
     })
-    rushing = aggregate("rusher_player_name", {
+    rushing = aggregate("rusher_player_name", "rusher_player_id", {
         "carries": ("rush_attempt", "sum"), "rushing_yards": ("rushing_yards", "sum"),
-        "rushing_tds": ("rush_touchdown", "sum"),
+        "rushing_tds": ("rush_touchdown", "sum"), "inside_10_carries": ("inside_10_rush", "sum"),
     })
-    receiving = aggregate("receiver_player_name", {
+    receiving = aggregate("receiver_player_name", "receiver_player_id", {
         "targets": ("pass_attempt", "sum"), "receptions": ("complete_pass", "sum"),
         "receiving_yards": ("receiving_yards", "sum"), "receiving_tds": ("pass_touchdown", "sum"),
+        "inside_10_targets": ("inside_10_target", "sum"), "red_zone_targets": ("red_zone_target", "sum"),
     })
-    keys = ["season", "week", "recent_team", "player_display_name"]
+    keys = ["season", "week", "recent_team", "player_id", "player_display_name"]
     merged = passing.merge(rushing, on=keys, how="outer").merge(receiving, on=keys, how="outer")
     merged["player_name"] = merged["player_display_name"]
     numeric = [c for c in merged.columns if c not in keys + ["player_name"]]
