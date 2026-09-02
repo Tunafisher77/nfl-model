@@ -70,8 +70,19 @@ def _current_players(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
     return current
 
 
+def _team_matchups(slate: Slate) -> dict[str, dict[str, object]]:
+    matchups = {}
+    for _, game in slate.games.iterrows():
+        day = str(game.day_label)
+        label = f"NON-SUNDAY - {day}" if bool(game.non_sunday) else day
+        matchups[game.away_team] = {"matchup": f"at {game.home_team}", "game_label": label}
+        matchups[game.home_team] = {"matchup": f"vs {game.away_team}", "game_label": label}
+    return matchups
+
+
 def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Slate) -> pd.DataFrame:
     current = _current_players(stats, slate)
+    matchups = _team_matchups(slate)
     rows = []
     for (player, team), group in current.groupby(["model_player", "model_team"]):
         group = group.sort_values("week").tail(6)
@@ -84,7 +95,9 @@ def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Sla
             continue
         td_rate = (rush_td + rec_td) / max(1.0, carries + targets)
         score = min(95.0, 38 + usage * 1.2 + td_rate * 120)
-        rows.append({"player": player, "team": team, "touchdown_score": round(score, 1),
+        game = matchups.get(team, {"matchup": "", "game_label": ""})
+        rows.append({"player": player, "team": team, "matchup": game["matchup"],
+                     "game_label": game["game_label"], "touchdown_score": round(score, 1),
                      "confidence": confidence_tier(score), "weighted_carries": round(carries, 1),
                      "weighted_targets": round(targets, 1), "recent_td_rate": round(td_rate, 3)})
     return pd.DataFrame(rows).sort_values("touchdown_score", ascending=False).head(24) if rows else pd.DataFrame()
@@ -92,6 +105,7 @@ def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Sla
 
 def evaluate_yardage(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
     current = _current_players(stats, slate)
+    matchups = _team_matchups(slate)
     categories = [
         ("Passing", "passing_yards", [200, 225, 250, 275, 300]),
         ("Rushing", "rushing_yards", [40, 60, 80, 100]),
@@ -116,7 +130,9 @@ def evaluate_yardage(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
             probability = milestone_probabilities[best]
             milestone_bonus = milestones.index(best) * 2.5
             score = min(95.0, 42 + probability * 38 + milestone_bonus + min(8, len(values)))
+            game = matchups.get(team, {"matchup": "", "game_label": ""})
             rows.append({"category": category, "player": player, "team": team,
+                         "matchup": game["matchup"], "game_label": game["game_label"],
                          "projection": round(projection, 1), "milestone": best,
                          "milestone_probability": round(probability, 3),
                          "confidence_score": round(score, 1), "confidence": confidence_tier(score)})
