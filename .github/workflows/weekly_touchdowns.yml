@@ -1,0 +1,24 @@
+name: Weekly NFL Touchdown Candidates
+
+on:
+  schedule:
+    - cron: "30 12 * * 3"
+    - cron: "30 13 * * 3"
+    - cron: "30 14 * * 3"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Publish weekly touchdown candidates
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python run_weekly_touchdown_candidates.py
