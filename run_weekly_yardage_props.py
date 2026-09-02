@@ -15,8 +15,8 @@ def main():
             rows += [["Status", "Insufficient current-season data; no forced selections."]]
         else:
             for _, pick in subset.iterrows():
-                rows.append([f"{pick.player} — {pick.team}",
-                             f"Projection {pick.projection}; {pick.milestone}+ probability {pick.milestone_probability:.0%}; {pick.confidence}"])
+                rows.append([f"{pick.player} — {pick.team} {pick.matchup}",
+                             f"{pick.game_label}; Projection {pick.projection}; {pick.milestone}+ probability {pick.milestone_probability:.0%}; {pick.confidence}"])
         rows += [["", ""]]
     rows_to_sheet("NFL Props Email Summary", rows)
 
