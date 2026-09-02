@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from nfl_common import normal_over_probability, select_next_slate
+from nfl_common import (normal_over_probability, select_next_slate,
+                        validate_current_roster_pool, validate_player_selections)
 
 
 class NflModelTests(unittest.TestCase):
@@ -23,6 +24,28 @@ class NflModelTests(unittest.TestCase):
 
     def test_probability_is_monotonic(self):
         self.assertGreater(normal_over_probability(80, 50, 15), normal_over_probability(60, 50, 15))
+
+    def test_roster_validation_requires_all_slate_teams(self):
+        et = ZoneInfo("America/New_York")
+        games = pd.DataFrame([{"home_team": "NE", "away_team": "SEA",
+                               "kickoff_et": pd.Timestamp("2026-09-09 20:20", tz=et)}])
+        slate = type("SlateStub", (), {"games": games})()
+        stats = pd.DataFrame([{
+            "player_id": "1", "player_display_name": "Current Player", "recent_team": "NE",
+            "roster_verified": True, "roster_status": "ACT", "roster_week": 1,
+            "roster_source": "test", "roster_refreshed_at": "2026-09-09 06:00 ET",
+        }])
+        with self.assertRaisesRegex(RuntimeError, "SEA"):
+            validate_current_roster_pool(stats, slate)
+
+    def test_final_selection_must_be_active_current_roster(self):
+        stats = pd.DataFrame([{
+            "player_display_name": "Active Player", "recent_team": "NE",
+            "roster_verified": True, "roster_status": "ACT",
+        }])
+        picks = pd.DataFrame([{"player": "Old Player", "team": "NE"}])
+        with self.assertRaisesRegex(RuntimeError, "Old Player"):
+            validate_player_selections(picks, stats)
 
 
 if __name__ == "__main__":
