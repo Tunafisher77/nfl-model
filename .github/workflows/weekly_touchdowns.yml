@@ -2,9 +2,11 @@ name: Weekly NFL Touchdown Candidates
 
 on:
   schedule:
-    - cron: "30 12 * * 3"
-    - cron: "30 13 * * 3"
-    - cron: "30 14 * * 3"
+    # Wednesday UTC = Tuesday evening/early Wednesday Pacific.
+    # Three waves provide ample margin for GitHub schedule delays before the 6 AM email window.
+    - cron: "30 4 * * 3"
+    - cron: "30 6 * * 3"
+    - cron: "30 8 * * 3"
   workflow_dispatch:
 
 permissions:
