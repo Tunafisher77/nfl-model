@@ -2,10 +2,11 @@ name: Weekly NFL Game Evaluations
 
 on:
   schedule:
-    # Wednesdays. Primary completes before 6 AM Pacific; later entries are backups.
-    - cron: "20 12 * * 3"
-    - cron: "20 13 * * 3"
-    - cron: "20 14 * * 3"
+    # Wednesday UTC = Tuesday evening/early Wednesday Pacific.
+    # Three waves provide ample margin for GitHub schedule delays before the 6 AM email window.
+    - cron: "20 4 * * 3"
+    - cron: "20 6 * * 3"
+    - cron: "20 8 * * 3"
   workflow_dispatch:
 
 permissions:
