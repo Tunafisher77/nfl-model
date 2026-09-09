@@ -2,9 +2,11 @@ name: Weekly NFL Yardage Props
 
 on:
   schedule:
-    - cron: "40 12 * * 3"
-    - cron: "40 13 * * 3"
-    - cron: "40 14 * * 3"
+    # Wednesday UTC = Tuesday evening/early Wednesday Pacific.
+    # Three waves provide ample margin for GitHub schedule delays before the 6 AM email window.
+    - cron: "40 4 * * 3"
+    - cron: "40 6 * * 3"
+    - cron: "40 8 * * 3"
   workflow_dispatch:
 
 permissions:
