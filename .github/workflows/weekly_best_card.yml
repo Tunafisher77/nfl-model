@@ -1,9 +1,6 @@
 name: Weekly NFL Best Card
 
 on:
-  push:
-    branches: [main]
-    paths: [nfl_models.py]
   schedule:
     # Runs after all three source reports; backup waves protect the Wednesday email window.
     - cron: "50 4 * * 3"
