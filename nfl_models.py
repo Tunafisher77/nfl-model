@@ -102,12 +102,15 @@ def evaluate_games(schedules: pd.DataFrame, slate: Slate, pbp: pd.DataFrame | No
     return pd.DataFrame(output).sort_values(["kickoff_et", "confidence_score"], ascending=[True, False])
 
 
-def _current_players(stats: pd.DataFrame, slate: Slate) -> pd.DataFrame:
+def _current_players(stats: pd.DataFrame, slate: Slate, include_prior_history: bool = False) -> pd.DataFrame:
     teams = set(slate.games.home_team) | set(slate.games.away_team)
     team_col = "recent_team" if "recent_team" in stats else "team"
     name_col = "player_display_name" if "player_display_name" in stats else "player_name"
     current_season = stats[(stats["season"] == slate.season) & (stats["week"] < slate.week)].copy()
-    if current_season.empty:
+    current_weeks = current_season["week"].nunique() if not current_season.empty else 0
+    if include_prior_history and current_weeks < 2:
+        current_season = stats[(stats["season"] <= slate.season) & (stats["season"] >= slate.season - 1)].copy()
+    elif current_season.empty:
         source_season = int(stats.loc[stats["season"] <= slate.season, "season"].max())
         current_season = stats[stats["season"] == source_season].copy()
     current = current_season[current_season[team_col].isin(teams)].copy()
@@ -153,13 +156,14 @@ def _team_matchups(slate: Slate) -> dict[str, dict[str, object]]:
 
 
 def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Slate,
-                        injuries: pd.DataFrame | None = None, limit: int | None = 24) -> pd.DataFrame:
-    current = _apply_injuries(_current_players(stats, slate), injuries)
+                        injuries: pd.DataFrame | None = None, limit: int | None = 24,
+                        include_prior_history: bool = False) -> pd.DataFrame:
+    current = _apply_injuries(_current_players(stats, slate, include_prior_history), injuries)
     matchups = _team_matchups(slate)
     team_form = _team_form(schedules, slate)
     rows = []
     for (player, team), group in current.groupby(["model_player", "model_team"]):
-        group = group.sort_values("week").tail(6)
+        group = group.sort_values(["season", "week"]).tail(6)
         injury_status = str(group.iloc[-1].get("injury_status", "Report pending"))
         if injury_status.lower() == "out":
             continue
@@ -196,8 +200,9 @@ def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Sla
 
 
 def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame | None = None,
-                     category_limit: int | None = 12) -> pd.DataFrame:
-    current = _apply_injuries(_current_players(stats, slate), injuries)
+                     category_limit: int | None = 12,
+                     include_prior_history: bool = False) -> pd.DataFrame:
+    current = _apply_injuries(_current_players(stats, slate, include_prior_history), injuries)
     matchups = _team_matchups(slate)
     categories = [
         ("Passing", "passing_yards", [200, 225, 250, 275, 300]),
@@ -206,7 +211,7 @@ def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame |
     ]
     rows = []
     for (player, team), group in current.groupby(["model_player", "model_team"]):
-        group = group.sort_values("week").tail(8)
+        group = group.sort_values(["season", "week"]).tail(8)
         injury_status = str(group.iloc[-1].get("injury_status", "Report pending"))
         if injury_status.lower() == "out":
             continue
