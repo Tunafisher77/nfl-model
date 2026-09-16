@@ -1,0 +1,33 @@
+name: Weekly NFL Best Card
+
+on:
+  schedule:
+    # Runs after all three source reports; backup waves protect the Wednesday email window.
+    - cron: "50 4 * * 3"
+    - cron: "50 6 * * 3"
+    - cron: "50 8 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/457900160143/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: mlb-hr-model@mlb-hr-model-498322.iam.gserviceaccount.com
+      - name: Publish weekly Best Card
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: python run_weekly_best_card.py
