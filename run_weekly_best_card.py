@@ -21,8 +21,10 @@ def main():
             pass
     pbp = pd.concat(pbp_frames, ignore_index=True) if pbp_frames else pd.DataFrame()
     games = evaluate_games(schedules, slate, pbp)
-    touchdowns = evaluate_touchdowns(stats, schedules, slate, injuries, limit=None)
-    yardage = evaluate_yardage(stats, slate, injuries, category_limit=None)
+    touchdowns = evaluate_touchdowns(stats, schedules, slate, injuries, limit=None,
+                                      include_prior_history=True)
+    yardage = evaluate_yardage(stats, slate, injuries, category_limit=None,
+                               include_prior_history=True)
     passing_tds = evaluate_passing_touchdowns(stats, slate)
     cards = build_best_card(games, touchdowns, yardage, passing_tds, slate)
 
