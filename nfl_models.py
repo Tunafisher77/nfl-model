@@ -152,7 +152,8 @@ def _team_matchups(slate: Slate) -> dict[str, dict[str, object]]:
     return matchups
 
 
-def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Slate, injuries: pd.DataFrame | None = None) -> pd.DataFrame:
+def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Slate,
+                        injuries: pd.DataFrame | None = None, limit: int | None = 24) -> pd.DataFrame:
     current = _apply_injuries(_current_players(stats, slate), injuries)
     matchups = _team_matchups(slate)
     team_form = _team_form(schedules, slate)
@@ -188,10 +189,14 @@ def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Sla
                      "weighted_targets": round(targets, 1), "recent_td_rate": round(td_rate, 3),
                      "inside_10_opportunities": round(inside_10_carries + inside_10_targets, 1),
                      "sample_games": len(group), "injury_status": injury_status})
-    return pd.DataFrame(rows).sort_values("touchdown_score", ascending=False).head(24) if rows else pd.DataFrame()
+    if not rows:
+        return pd.DataFrame()
+    frame = pd.DataFrame(rows).sort_values("touchdown_score", ascending=False)
+    return frame.head(limit) if limit is not None else frame
 
 
-def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame | None = None) -> pd.DataFrame:
+def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame | None = None,
+                     category_limit: int | None = 12) -> pd.DataFrame:
     current = _apply_injuries(_current_players(stats, slate), injuries)
     matchups = _team_matchups(slate)
     categories = [
@@ -250,4 +255,5 @@ def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame |
     frame = pd.DataFrame(rows)
     if frame.empty:
         return frame
-    return frame.sort_values(["category", "confidence_score"], ascending=[True, False]).groupby("category").head(12)
+    frame = frame.sort_values(["category", "confidence_score"], ascending=[True, False])
+    return frame.groupby("category").head(category_limit) if category_limit is not None else frame
