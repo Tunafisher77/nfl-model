@@ -8,7 +8,7 @@ Statistics-only weekly NFL evaluation system. It does not use sportsbook odds, l
 
 1. **Weekly Game Evaluations** — every game in the selected NFL week, projected winner/score and confidence.
 2. **Touchdown Candidates** — rushing and receiving touchdown candidates; quarterback passing touchdowns are excluded.
-3. **Yardage Props** — passing, rushing, and receiving yard projections with fixed statistical milestones.
+3. **Yardage Props** — passing, rushing, and receiving yard projections with fixed statistical milestones.\n4. **NFL Best Card** — three complete game stacks, each containing a projected winner, one touchdown scorer from each team, one rushing-yard selection, one receiving-yard selection, and one passing-touchdown selection. Touchdown scorers are reproducibly randomized from each team's top three qualified candidates.
 
 All non-Sunday games are labeled with their weekday and kickoff time. The same verified season/week slate feeds every report.
 
@@ -34,7 +34,7 @@ Google authentication uses GitHub OIDC and Google Workload Identity Federation; 
 
 - `NFL Game Email Summary`
 - `NFL TD Email Summary`
-- `NFL Props Email Summary`
+- `NFL Props Email Summary`\n- `NFL Best Card Email Summary`
 - `NFL Weekly Recap Email Summary`
 - Prediction archive, graded result, and calibration tabs used for tracking
 
