@@ -29,4 +29,6 @@ jobs:
       - name: Grade frozen weekly predictions
         env:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
-        run: python nfl_results_tracker.py
+        run: |
+          python nfl_results_tracker.py
+          python nfl_weekly_recap.py
