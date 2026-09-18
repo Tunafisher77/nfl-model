@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from nfl_common import EASTERN, load_player_stats, load_schedules, read_records_sheet, rows_to_sheet
+from nfl_common import (EASTERN, load_player_stats, load_schedules, read_records_sheet,
+                        rows_to_sheet, upsert_records_sheet)
 from nfl_results_tracker import _actual_player_weeks, grade_games, grade_props, grade_touchdowns
 
 
@@ -99,32 +100,141 @@ def build_recap_rows(
     return rows
 
 
+def grade_best_card(
+    schedules: pd.DataFrame,
+    actual: pd.DataFrame,
+    archive: list[dict],
+) -> list[dict]:
+    """Grade the exact archived Best Card; completed-game absences are DNP, not misses."""
+    results = []
+    stat_columns = {
+        "Rushing": "rushing_yards",
+        "Receiving": "receiving_yards",
+        "Passing TDs": "passing_tds",
+    }
+    for pick in archive:
+        season, week = int(pick["season"]), int(pick["week"])
+        game = schedules[
+            (schedules.season == season)
+            & (schedules.week == week)
+            & (schedules.away_team == pick["away_team"])
+            & (schedules.home_team == pick["home_team"])
+        ]
+        result = {**pick, "status": "Pending", "actual": "", "result": ""}
+        if game.empty or pd.isna(game.iloc[0].home_score):
+            results.append(result)
+            continue
+        game = game.iloc[0]
+        category = str(pick.get("category", ""))
+        if category == "Winner":
+            winner = game.home_team if game.home_score > game.away_score else game.away_team
+            result.update({
+                "status": "Final",
+                "actual": winner,
+                "result": "HIT" if str(pick["selection"]) == winner else "MISS",
+            })
+            results.append(result)
+            continue
+
+        player = actual[
+            (actual.season == season)
+            & (actual.week == week)
+            & (actual.player == pick["selection"])
+            & (actual.team == pick["team"])
+        ]
+        if player.empty:
+            result.update({"status": "DNP", "actual": "DNP", "result": "DNP"})
+            results.append(result)
+            continue
+        player = player.iloc[0]
+        if category == "Touchdown":
+            value = int(_number(player.rushing_tds) + _number(player.receiving_tds))
+        elif category in stat_columns:
+            value = int(_number(player[stat_columns[category]]))
+        else:
+            result.update({"status": "Unsupported", "result": "UNSUPPORTED"})
+            results.append(result)
+            continue
+        threshold = _number(pick.get("threshold"), 1)
+        result.update({
+            "status": "Final",
+            "actual": value,
+            "result": "HIT" if value >= threshold else "MISS",
+        })
+        results.append(result)
+    return results
+
+
+def build_best_card_recap_rows(archive: list[dict], results: list[dict]) -> list[list[object]]:
+    if not archive:
+        return [["", ""], ["NFL Best Card Results", "No archived Best Card is available for this week."]]
+    hits = sum(row.get("result") == "HIT" for row in results)
+    misses = sum(row.get("result") == "MISS" for row in results)
+    dnp = sum(row.get("result") == "DNP" for row in results)
+    pending = sum(row.get("status") == "Pending" for row in results)
+    graded = hits + misses
+    rows: list[list[object]] = [
+        ["", ""],
+        ["NFL Best Card Results", ""],
+        ["Overall", f"{hits}-{misses} ({_pct(hits, graded)}); {dnp} DNP; {pending} pending"],
+    ]
+    by_key = {
+        (str(row.get("card")), str(row.get("component"))): row
+        for row in results
+    }
+    for card in sorted({int(row["card"]) for row in archive}):
+        picks = [row for row in archive if int(row["card"]) == card]
+        if not picks:
+            continue
+        rows.append([
+            f"Stack {card}: {picks[0]['away_team']} at {picks[0]['home_team']}",
+            "",
+        ])
+        for pick in picks:
+            result = by_key.get((str(pick["card"]), str(pick["component"])), {})
+            mark = result.get("result") or result.get("status") or "Pending"
+            actual_value = result.get("actual", "")
+            detail = f"{pick['selection']} — {mark}"
+            if actual_value not in ("", None):
+                detail += f" (actual: {actual_value})"
+            rows.append([pick["component"], detail])
+    return rows
+
+
 def main() -> None:
     schedules = load_schedules()
     game_all = read_records_sheet("NFL Game Predictions Archive")
     td_all = read_records_sheet("NFL TD Predictions Archive")
     props_all = read_records_sheet("NFL Props Predictions Archive")
-    target = latest_recap_week(game_all, td_all, props_all)
+    best_card_all = read_records_sheet("NFL Best Card Archive")
+    target = latest_recap_week(game_all, td_all, props_all, best_card_all)
     if target is None:
         raise RuntimeError("No archived NFL predictions are available for a recap.")
     season, week = target
     game_archive = for_week(game_all, season, week)
     td_archive = for_week(td_all, season, week)
     props_archive = for_week(props_all, season, week)
+    best_card_archive = for_week(best_card_all, season, week)
 
     stats = load_player_stats(season)
     actual = _actual_player_weeks(stats)
     game_results = grade_games(schedules, game_archive)
     td_results = grade_touchdowns(actual, td_archive)
     props_results = grade_props(actual, props_archive)
+    best_card_results = grade_best_card(schedules, actual, best_card_archive)
+    if best_card_results:
+        upsert_records_sheet(
+            "NFL Best Card Results",
+            best_card_results,
+            ("season", "week", "card", "component"),
+        )
 
-    rows_to_sheet(
-        "NFL Weekly Recap Email Summary",
-        build_recap_rows(
-            season, week, game_archive, td_archive, props_archive,
-            game_results, td_results, props_results,
-        ),
+    recap_rows = build_recap_rows(
+        season, week, game_archive, td_archive, props_archive,
+        game_results, td_results, props_results,
     )
+    recap_rows.extend(build_best_card_recap_rows(best_card_archive, best_card_results))
+    rows_to_sheet("NFL Weekly Recap Email Summary", recap_rows)
 
 
 if __name__ == "__main__":
