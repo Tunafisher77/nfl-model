@@ -1,10 +1,54 @@
+from datetime import datetime, timezone
+
 import pandas as pd
 
 from nfl_best_card import build_best_card, evaluate_passing_touchdowns
 from nfl_common import (email_header, format_game_time, load_injuries, load_play_by_play,
                         load_player_stats, load_schedules, roster_email_rows, rows_to_sheet,
-                        select_next_slate, validate_current_roster_pool)
+                        select_next_slate, upsert_records_sheet,
+                        validate_current_roster_pool)
 from nfl_models import evaluate_games, evaluate_touchdowns, evaluate_yardage
+
+
+def archive_best_card(cards: list[dict], slate) -> None:
+    """Persist the exact final Wednesday card, replacing same-week rerun versions."""
+    snapshot = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    records: list[dict] = []
+    for card_rank, card in enumerate(cards, 1):
+        base = {
+            "season": slate.season,
+            "week": slate.week,
+            "season_type": slate.season_type,
+            "card": card_rank,
+            "away_team": card["away_team"],
+            "home_team": card["home_team"],
+            "snapshot_utc": snapshot,
+        }
+        components = [
+            ("Game Winner", card["winner"], card["winner"], "Winner", 1),
+            ("Away TD Scorer", card["away_td"]["player"], card["away_td"]["team"], "Touchdown", 1),
+            ("Home TD Scorer", card["home_td"]["player"], card["home_td"]["team"], "Touchdown", 1),
+            ("Rushing Yards", card["rushing"]["player"], card["rushing"]["team"],
+             "Rushing", card["rushing"]["milestone"]),
+            ("Receiving Yards", card["receiving"]["player"], card["receiving"]["team"],
+             "Receiving", card["receiving"]["milestone"]),
+            ("Passing TDs", card["passing_tds"]["player"], card["passing_tds"]["team"],
+             "Passing TDs", card["passing_tds"]["passing_td_target"]),
+        ]
+        for component, selection, team, category, threshold in components:
+            records.append({
+                **base,
+                "component": component,
+                "selection": selection,
+                "team": team,
+                "category": category,
+                "threshold": threshold,
+            })
+    upsert_records_sheet(
+        "NFL Best Card Archive",
+        records,
+        ("season", "week", "card", "component"),
+    )
 
 
 def main():
@@ -27,6 +71,7 @@ def main():
                                include_prior_history=True)
     passing_tds = evaluate_passing_touchdowns(stats, slate)
     cards = build_best_card(games, touchdowns, yardage, passing_tds, slate)
+    archive_best_card(cards, slate)
 
     rows = email_header("Weekly NFL Best Card", slate)
     rows += roster_email_rows(roster_info) + [["Card Policy", "3 games; 6 selections per game; statistics only"],
