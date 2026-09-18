@@ -8,7 +8,8 @@ import pandas as pd
 
 from nfl_common import (EASTERN, load_player_stats, load_schedules, read_records_sheet,
                         rows_to_sheet, upsert_records_sheet)
-from nfl_results_tracker import _actual_player_weeks, grade_games, grade_props, grade_touchdowns
+from nfl_results_tracker import (_actual_player_weeks, _number, grade_games,
+                                 grade_props, grade_touchdowns)
 
 
 def latest_recap_week(*archives: list[dict]) -> tuple[int, int] | None:
