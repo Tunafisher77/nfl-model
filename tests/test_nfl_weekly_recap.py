@@ -1,9 +1,12 @@
 import unittest
+
+import pandas as pd
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from nfl_weekly_recap import (build_best_card_recap_rows, build_recap_rows,
-                               latest_recap_week)
+                               grade_best_card, latest_recap_week)
 
 
 class WeeklyRecapTests(unittest.TestCase):
@@ -34,6 +37,26 @@ class WeeklyRecapTests(unittest.TestCase):
         self.assertIn("1-0", lookup["Game Winners"])
         self.assertIn("1 pending", lookup["Game Winners"])
         self.assertTrue(any(row[1].startswith("PENDING") for row in rows if row[0] == "PHI at DAL"))
+
+
+    def test_best_card_grades_passing_touchdowns(self):
+        schedules = pd.DataFrame([{
+            "season": 2026, "week": 2, "away_team": "SEA", "home_team": "LAR",
+            "away_score": 20, "home_score": 27,
+        }])
+        actual = pd.DataFrame([{
+            "season": 2026, "week": 2, "player": "Quarterback A",
+            "team": "LAR", "passing_tds": 3,
+        }])
+        archive = [{
+            "season": 2026, "week": 2, "card": 1,
+            "component": "Passing TDs", "category": "Passing TDs",
+            "selection": "Quarterback A", "team": "LAR", "threshold": 2,
+            "away_team": "SEA", "home_team": "LAR",
+        }]
+        results = grade_best_card(schedules, actual, archive)
+        self.assertEqual(results[0]["actual"], 3)
+        self.assertEqual(results[0]["result"], "HIT")
 
 
     def test_best_card_recap_separates_dnp_from_hit_rate(self):
