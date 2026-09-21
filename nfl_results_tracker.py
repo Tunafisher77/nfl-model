@@ -39,7 +39,7 @@ def grade_games(schedules: pd.DataFrame, archive: list[dict]) -> list[dict]:
 def _actual_player_weeks(stats: pd.DataFrame) -> pd.DataFrame:
     name_col = "player_display_name" if "player_display_name" in stats else "player_name"
     team_col = "recent_team" if "recent_team" in stats else "team"
-    columns = ["rushing_tds", "receiving_tds", "passing_yards", "rushing_yards", "receiving_yards"]
+    columns = ["rushing_tds", "receiving_tds", "passing_tds", "passing_yards", "rushing_yards", "receiving_yards"]
     for col in columns:
         if col not in stats:
             stats[col] = 0
