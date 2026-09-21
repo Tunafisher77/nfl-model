@@ -7,6 +7,9 @@ on:
       - main
     paths:
       - ".github/workflows/monday_recap.yml"
+      - "nfl_results_tracker.py"
+      - "nfl_weekly_recap.py"
+      - "tests/test_nfl_weekly_recap.py"
   schedule:
     # Early, staggered Monday attempts. These remain valid if GitHub starts late.
     - cron: "17 9 * * 1"
