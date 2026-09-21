@@ -1,49 +1,101 @@
 name: NFL Monday Recap
 
 on:
+  # Editing this workflow performs an immediate recovery run.
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/monday_recap.yml"
   schedule:
-    # 5:30 AM Pacific year-round (two UTC schedules, gated by local time).
-    - cron: "30 12 * * 1"
-    - cron: "30 13 * * 1"
+    # Early, staggered Monday attempts. These remain valid if GitHub starts late.
+    - cron: "17 9 * * 1"
+    - cron: "23 10 * * 1"
+    - cron: "29 11 * * 1"
+    - cron: "37 12 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: nfl-monday-recap
+  cancel-in-progress: false
+
 jobs:
   recap:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Check Pacific run window
-        id: pacific
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "$(TZ=America/Los_Angeles date +%H)" = "05" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: actions/checkout@v4
-        if: steps.pacific.outputs.run == 'true'
+
       - uses: actions/setup-python@v5
-        if: steps.pacific.outputs.run == 'true'
         with:
           python-version: "3.11"
+
       - run: pip install -r requirements.txt
-        if: steps.pacific.outputs.run == 'true'
-      - run: python -m unittest discover -s tests -v
-        if: steps.pacific.outputs.run == 'true'
+
+      - name: Verify production safeguards
+        run: python -m unittest discover -s tests -v
+
       - name: Authenticate to Google Cloud
-        if: steps.pacific.outputs.run == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: projects/457900160143/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: mlb-hr-model@mlb-hr-model-498322.iam.gserviceaccount.com
+
       - name: Grade completed games and build recap
-        if: steps.pacific.outputs.run == 'true'
         env:
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
         run: |
+          set -euo pipefail
           python nfl_results_tracker.py
           python nfl_weekly_recap.py
+
+      - name: Verify recap was published
+        env:
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+        run: |
+          python - <<'PY'
+          from nfl_common import read_records_sheet
+
+          game_archive = read_records_sheet("NFL Game Predictions Archive")
+          td_archive = read_records_sheet("NFL TD Predictions Archive")
+          props_archive = read_records_sheet("NFL Props Predictions Archive")
+          best_archive = read_records_sheet("NFL Best Card Archive")
+          weeks = {
+              (int(row["season"]), int(row["week"]))
+              for archive in (game_archive, td_archive, props_archive, best_archive)
+              for row in archive
+              if row.get("season") not in (None, "") and row.get("week") not in (None, "")
+          }
+          if not weeks:
+              raise SystemExit("No archived NFL predictions are available.")
+          expected_season, expected_week = max(weeks)
+
+          # The summary is key/value rather than a header-based records table.
+          import gspread
+          from google.auth import default
+
+          credentials, _ = default(scopes=[
+              "https://www.googleapis.com/auth/spreadsheets",
+              "https://www.googleapis.com/auth/drive",
+          ])
+          workbook = gspread.authorize(credentials).open_by_key(
+              __import__("os").environ["GOOGLE_SHEETS_ID"]
+          )
+          values = workbook.worksheet("NFL Weekly Recap Email Summary").get("A1:B10")
+          summary = {
+              row[0]: row[1] if len(row) > 1 else ""
+              for row in values
+              if row and row[0]
+          }
+          actual = (int(summary.get("Season", -1)), int(summary.get("Week", -1)))
+          expected = (expected_season, expected_week)
+          if actual != expected:
+              raise SystemExit(
+                  f"Recap publication verification failed: expected {expected}, got {actual}"
+              )
+          print(f"Verified NFL recap for season {actual[0]}, week {actual[1]}.")
+          PY
