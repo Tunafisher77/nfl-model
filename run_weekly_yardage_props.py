@@ -15,6 +15,7 @@ def main():
     validate_player_selections(picks, stats)
     rows = email_header("Weekly NFL Player Yardage Props", slate)
     rows += roster_email_rows(roster_info) + [["", ""]]
+    rows += [["Score Note", "Watch indicates limited data (fewer than 3 games); milestone percentages are statistical estimates."], ["", ""]]
     rows += [["Availability Note", "Wednesday morning injury reports may be incomplete; Out players are excluded when reported."], ["", ""]]
     for category in ["Passing", "Rushing", "Receiving"]:
         rows += [[category + " Yards", ""]]
@@ -23,8 +24,11 @@ def main():
             rows += [["Status", "Insufficient current-season data; no forced selections."]]
         else:
             for _, pick in subset.iterrows():
+                status = f" | Injury: {pick.injury_status}" if str(pick.injury_status).lower() not in ("no game status designation", "report pending", "nan") else ""
                 rows.append([f"{pick.player} — {pick.team} {pick.matchup}",
-                             f"{pick.game_label}; Projection {pick.projection}; {pick.milestone}+ probability {pick.milestone_probability:.0%}; {pick.confidence}; sample {pick.sample_games}; {pick.injury_status}"])
+                             f"{pick.game_label} | Projected {pick.projection} yards | "
+                             f"{pick.milestone}+ yards: {pick.milestone_probability:.0%} | "
+                             f"{pick.confidence} | {pick.sample_games} games{status}"])
         rows += [["", ""]]
     rows_to_sheet("NFL Props Email Summary", rows)
     archive = []
