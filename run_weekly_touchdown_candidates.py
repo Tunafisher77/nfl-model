@@ -16,14 +16,17 @@ def main():
     rows = email_header("Weekly NFL Touchdown Candidates", slate)
     rows += roster_email_rows(roster_info) + [["", ""]]
     rows += [["Touchdown Leaders", "Rushing/receiving touchdowns; quarterback passing TDs excluded"]]
-    rows += [["Availability Note", "Wednesday morning injury reports may be incomplete; Out players are excluded when reported."]]
+    rows += [["Availability Note", "Wednesday morning injury reports may be incomplete; reported Out players are excluded."],
+             ["Score Note", "Watch (64) indicates limited data (fewer than 3 games); scores are model rankings, not probabilities."], ["", ""]]
     if picks.empty:
         rows += [["Status", "Insufficient current-season usage data; no forced selections."]]
     else:
         for rank, (_, pick) in enumerate(picks.iterrows(), 1):
+            status = f"; Injury: {pick.injury_status}" if str(pick.injury_status).lower() not in ("no game status designation", "report pending", "nan") else ""
             rows.append([f"{rank}. {pick.player} — {pick.team} {pick.matchup}",
-                         f"{pick.game_label}; " +
-                         f"{pick.confidence} ({pick.touchdown_score}); carries {pick.weighted_carries}, targets {pick.weighted_targets}; sample {pick.sample_games}; {pick.injury_status}"])
+                         f"{pick.game_label} | {pick.confidence} score {pick.touchdown_score} | "
+                         f"{pick.weighted_carries} carries, {pick.weighted_targets} targets | "
+                         f"{pick.sample_games} games{status}"])
     rows_to_sheet("NFL TD Email Summary", rows)
     archive = []
     if not picks.empty:
