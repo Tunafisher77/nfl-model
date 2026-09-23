@@ -8,6 +8,12 @@ import pandas as pd
 from nfl_common import Slate, completed_games, confidence_tier, normal_over_probability, weighted_recent
 
 
+def _limited_sample_score(score: float, games: int) -> float:
+    """Shrink early-season rankings toward a cautious baseline without flattening ties."""
+    weight = games / (games + 6)
+    return min(64.0, 48.0 + weight * (score - 48.0))
+
+
 def _team_form(schedules: pd.DataFrame, slate: Slate) -> dict[str, dict[str, float]]:
     games = completed_games(schedules, slate.season, slate.week)
     if games.empty:
@@ -183,7 +189,7 @@ def evaluate_touchdowns(stats: pd.DataFrame, schedules: pd.DataFrame, slate: Sla
         score = min(95.0, 34 + usage * 1.0 + td_rate * 105 + inside_10_carries * 4.5
                     + inside_10_targets * 5.0 + red_zone_targets * 1.5 + scoring_environment)
         if len(group) < 3:
-            score = min(score, 64.0)
+            score = _limited_sample_score(score, len(group))
         if slate.week == 1 or injury_status.lower() in ["questionable", "doubtful"]:
             score = min(score, 74.0)
         game = matchups.get(team, {"matchup": "", "game_label": ""})
@@ -247,7 +253,7 @@ def evaluate_yardage(stats: pd.DataFrame, slate: Slate, injuries: pd.DataFrame |
             milestone_bonus = milestones.index(best) * 2.5
             score = min(95.0, 42 + probability * 38 + milestone_bonus + min(8, len(values)))
             if len(values) < 3:
-                score = min(score, 64.0)
+                score = _limited_sample_score(score, len(values))
             if slate.week == 1 or injury_status.lower() in ["questionable", "doubtful"]:
                 score = min(score, 74.0)
             game = matchups.get(team, {"matchup": "", "game_label": ""})
