@@ -17,16 +17,9 @@ function runNflBestCardWednesdayCheck() {
     var key = season + '-W' + week;
     var props = PropertiesService.getScriptProperties();
     if (props.getProperty(NFL_BEST_CARD_SENT_WEEK) === key) return;
-    var html = '<div style="font-family:Arial,sans-serif">';
-    values.forEach(function(row) {
-      if (!row[0] && !row[1]) { html += '<br>'; return; }
-      html += '<div style="padding:5px 0;border-bottom:1px solid #eee"><b>' +
-        escapeNflBestCard_(row[0]) + '</b>' + (row[1] ? ': ' + escapeNflBestCard_(row[1]) : '') + '</div>';
-    });
-    html += '</div>';
     MailApp.sendEmail({to: Session.getEffectiveUser().getEmail(),
       subject: 'Weekly NFL Best Card — ' + season + ' Week ' + week,
-      htmlBody: html, body: values.map(function(r) { return r.filter(String).join(': '); }).join('\n')});
+      htmlBody: nflUnifiedHtml_(values), body: nflUnifiedText_(values), name: 'NFL Weekly Model'});
     props.setProperty(NFL_BEST_CARD_SENT_WEEK, key);
   } finally { lock.releaseLock(); }
 }
