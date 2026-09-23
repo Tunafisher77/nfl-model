@@ -17,7 +17,7 @@ def main():
     rows += roster_email_rows(roster_info) + [["", ""]]
     rows += [["Touchdown Leaders", "Rushing/receiving touchdowns; quarterback passing TDs excluded"]]
     rows += [["Availability Note", "Wednesday morning injury reports may be incomplete; reported Out players are excluded."],
-             ["Score Note", "Watch (64) indicates limited data (fewer than 3 games); scores are model rankings, not probabilities."], ["", ""]]
+             ["Score Note", "Scores with fewer than 3 games are reduced for limited data; scores are model rankings, not probabilities."], ["", ""]]
     if picks.empty:
         rows += [["Status", "Insufficient current-season usage data; no forced selections."]]
     else:
