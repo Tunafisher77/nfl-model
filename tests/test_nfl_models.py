@@ -6,9 +6,17 @@ import pandas as pd
 
 from nfl_common import (normal_over_probability, select_next_slate,
                         validate_current_roster_pool, validate_player_selections)
+from nfl_models import _limited_sample_score
 
 
 class NflModelTests(unittest.TestCase):
+    def test_limited_sample_scores_remain_cautious_but_rank_distinct_players(self):
+        low = _limited_sample_score(68, 2)
+        high = _limited_sample_score(92, 2)
+        self.assertLess(low, high)
+        self.assertLess(high, 64)
+        self.assertLess(_limited_sample_score(92, 1), high)
+
     def test_selects_complete_week_and_marks_non_sunday(self):
         et = ZoneInfo("America/New_York")
         schedules = pd.DataFrame([
