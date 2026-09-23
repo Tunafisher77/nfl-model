@@ -1,6 +1,16 @@
 var NFL_BEST_CARD_TAB = 'NFL Best Card Email Summary';
 var NFL_BEST_CARD_SENT_WEEK = 'NFL_BEST_CARD_SENT_WEEK';
 
+function sendTestNflBestCardEmail() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(NFL_BEST_CARD_TAB);
+  if (!sheet || sheet.getLastRow() < 2) throw new Error('NFL Best Card summary is not ready.');
+  var values = sheet.getDataRange().getDisplayValues();
+  var recipient = Session.getEffectiveUser().getEmail();
+  if (!recipient) throw new Error('Unable to determine the recipient email address.');
+  MailApp.sendEmail({to: recipient, subject: '[TEST] Weekly NFL Best Card',
+    htmlBody: nflUnifiedHtml_(values), body: nflUnifiedText_(values), name: 'NFL Weekly Model'});
+}
+
 function runNflBestCardWednesdayCheck() {
   var zone = 'America/Los_Angeles';
   var now = new Date();
