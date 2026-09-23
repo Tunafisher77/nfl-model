@@ -56,8 +56,8 @@ function sendNflMondayRecapEmail() {
     MailApp.sendEmail({
       to: recipient,
       subject: subject,
-      body: nflRecapPlainText_(values),
-      htmlBody: nflRecapHtml_(values),
+      body: nflUnifiedText_(values),
+      htmlBody: nflUnifiedHtml_(values),
       name: 'NFL Weekly Model'
     });
     properties.setProperty(sentKey, 'true');
@@ -100,37 +100,3 @@ function findNflRecapValue_(values, label) {
   return '';
 }
 
-function nflRecapPlainText_(values) {
-  return values.filter(function(row) {
-    return row[0] || row[1];
-  }).map(function(row) {
-    return row[1] ? row[0] + ': ' + row[1] : row[0];
-  }).join('\n');
-}
-
-function nflRecapHtml_(values) {
-  var html = '<div style="font-family:Arial,sans-serif;max-width:760px;color:#172033">';
-  for (var i = 0; i < values.length; i++) {
-    var left = values[i][0] || '';
-    var right = values[i][1] || '';
-    if (!left && !right) {
-      html += '<div style="height:10px"></div>';
-    } else if (left === 'NFL Weekly Picks Recap') {
-      html += '<h1 style="font-size:24px;margin:0 0 12px;color:#0b3d71">' + nflRecapEscape_(left) + '</h1>';
-    } else if (!right) {
-      html += '<h2 style="font-size:18px;margin:18px 0 6px;padding-bottom:5px;border-bottom:2px solid #0b3d71">' + nflRecapEscape_(left) + '</h2>';
-    } else {
-      var color = right.indexOf('HIT') === 0 ? '#16794b' : (right.indexOf('MISS') === 0 ? '#b42318' : '#596579');
-      html += '<div style="padding:7px 4px;border-bottom:1px solid #e6e9ee"><strong>' +
-        nflRecapEscape_(left) + '</strong><br><span style="color:' + color + '">' +
-        nflRecapEscape_(right) + '</span></div>';
-    }
-  }
-  return html + '</div>';
-}
-
-function nflRecapEscape_(value) {
-  return String(value).replace(/[&<>"']/g, function(char) {
-    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char];
-  });
-}
