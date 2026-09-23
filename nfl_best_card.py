@@ -81,7 +81,9 @@ def build_best_card(games: pd.DataFrame, touchdowns: pd.DataFrame, yardage: pd.D
         away_pick = _stable_choice(away_td, slate.season, slate.week, away)
         home_pick = _stable_choice(home_td, slate.season, slate.week, home)
         rush_pick = rush.sort_values("confidence_score", ascending=False).iloc[0]
-        receive_pick = receive.sort_values("confidence_score", ascending=False).iloc[0]
+        distinct_receivers = receive[receive.player != rush_pick.player]
+        receive_pick = (distinct_receivers if not distinct_receivers.empty else receive).sort_values(
+            "confidence_score", ascending=False).iloc[0]
         pass_pick = quarterbacks.sort_values("passing_td_score", ascending=False).iloc[0]
         component_scores = [float(game.confidence_score), float(away_pick.touchdown_score),
                             float(home_pick.touchdown_score), float(rush_pick.confidence_score),
