@@ -18,7 +18,10 @@ from google.oauth2.service_account import Credentials
 
 EASTERN = ZoneInfo("America/New_York")
 PACIFIC = ZoneInfo("America/Los_Angeles")
-SCHEDULES_URL = "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv"
+SCHEDULES_URLS = [
+    "https://raw.githubusercontent.com/nflverse/nfldata/master/data/games.csv",
+    "https://github.com/nflverse/nflverse-data/releases/download/schedules/games.csv",
+]
 PLAYER_STATS_URL = "https://github.com/nflverse/nflverse-data/releases/download/player_stats/player_stats.csv"
 PBP_URL = "https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_{season}.parquet"
 ROSTER_URL = "https://github.com/nflverse/nflverse-data/releases/download/weekly_rosters/roster_weekly_{season}.csv"
@@ -43,7 +46,20 @@ def _now() -> datetime:
 
 
 def load_schedules() -> pd.DataFrame:
-    df = pd.read_csv(SCHEDULES_URL, low_memory=False)
+    """Load schedules from the maintained nflverse source with a legacy fallback."""
+    errors = []
+    df = None
+    for url in SCHEDULES_URLS:
+        try:
+            candidate = pd.read_csv(url, low_memory=False)
+            if candidate.empty or "season" not in candidate.columns or "week" not in candidate.columns:
+                raise RuntimeError("schedule feed is empty or missing required columns")
+            df = candidate
+            break
+        except Exception as exc:
+            errors.append(f"{url}: {exc}")
+    if df is None:
+        raise RuntimeError("Unable to load NFL schedules from configured sources: " + " | ".join(errors))
     if "season_type" not in df and "game_type" in df:
         df = df.rename(columns={"game_type": "season_type"})
     kickoff = pd.to_datetime(df.get("gameday"), errors="coerce")
