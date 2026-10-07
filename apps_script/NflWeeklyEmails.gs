@@ -34,9 +34,15 @@ function sendNflReportIfFresh_(tabName, propertyName, reportTitle) {
   if (!metadata.scheduleDate || metadata.scheduleDate !== easternToday || !metadata.season || !metadata.week) return false;
   var weekKey = metadata.season + '-' + metadata.week;
   var properties = PropertiesService.getScriptProperties();
-  if (properties.getProperty(propertyName) === weekKey) return false;
-  sendNflReport_(tabName, reportTitle + ' — ' + metadata.season + ' Week ' + metadata.week);
+  var values = sheet.getDataRange().getDisplayValues();
+  var fingerprint = nflContentFingerprint_(values);
+  var fingerprintKey = propertyName + '_CONTENT_' + weekKey;
+  var previousFingerprint = properties.getProperty(fingerprintKey);
+  if (previousFingerprint === fingerprint) return false;
+  var updated = !!previousFingerprint;
+  sendNflReport_(tabName, (updated ? '[UPDATED] ' : '') + reportTitle + ' — ' + metadata.season + ' Week ' + metadata.week);
   properties.setProperty(propertyName, weekKey);
+  properties.setProperty(fingerprintKey, fingerprint);
   return true;
 }
 function sendNflReport_(tabName, subject) {
@@ -56,6 +62,11 @@ function getNflMetadata_(values) {
     if (row[0] === 'Week') metadata.week = row[1];
   });
   return metadata;
+}
+function nflContentFingerprint_(values) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify(values), Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(digest);
 }
 function nflUnifiedText_(values) {
   return values.filter(function(row) { return row[0] || row[1]; })
