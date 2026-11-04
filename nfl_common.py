@@ -127,8 +127,11 @@ def load_weekly_roster(season: int) -> pd.DataFrame:
     missing = required - set(roster.columns)
     if missing:
         raise RuntimeError(f"Current roster feed is missing required columns: {sorted(missing)}")
-    latest_week = int(pd.to_numeric(roster["week"], errors="coerce").max())
-    roster = roster[roster["week"] == latest_week].copy()
+    # A league-wide latest week can omit teams on bye.
+    roster["week"] = pd.to_numeric(roster["week"], errors="coerce")
+    roster = roster.dropna(subset=["week", "team", "gsis_id"]).copy()
+    roster = roster[roster["week"] == roster.groupby("team")["week"].transform("max")].copy()
+    roster = roster.sort_values("week").drop_duplicates("gsis_id", keep="last")
     roster["roster_source"] = ROSTER_URL.format(season=season)
     roster["roster_refreshed_at"] = _now().astimezone(EASTERN).strftime("%Y-%m-%d %H:%M ET")
     return roster.sort_values("week").drop_duplicates("gsis_id", keep="last")
