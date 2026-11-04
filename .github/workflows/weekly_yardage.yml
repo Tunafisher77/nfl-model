@@ -7,6 +7,9 @@ on:
     - cron: "40 4 * * 3"
     - cron: "40 6 * * 3"
     - cron: "40 8 * * 3"
+  push:
+    paths:
+      - ".github/nfl-recovery-trigger.txt"
   workflow_dispatch:
 
 permissions:
