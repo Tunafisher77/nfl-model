@@ -102,3 +102,5 @@ jobs:
               )
           print(f"Verified NFL recap for season {actual[0]}, week {actual[1]}.")
           PY
+
+# Recovery dispatch: 2026-11-23 missing scheduled delivery; no logic changes.
